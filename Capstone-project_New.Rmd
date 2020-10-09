@@ -1,0 +1,336 @@
+---
+title: "Capstone"
+author: "Suprasanna Pradhan"
+date: "1 September 2019"
+output:
+  word_document: default
+  html_document: default
+---
+
+#Objective of the project 
+This project aims at the case of customers' default payments in Taiwan. Expected to calculate the probability of default for a customer and further use multiple models to compare their predictive accuracy. From the perspective of risk management, the result of predictive accuracy of the estimated probability of default will be more valuable than the binary result of classification - credible or not credible clients. 
+
+# Introduction
+
+A Taiwan-based bank wants to better predict the likelihood of default for its customers, as well as identify the key drivers that determine this likelihood. This would inform the issuer's decisions on who to give a credit card to and what credit limit to provide. It would also help the bank have a better understanding of their current and potential customers, which would inform their future strategy, including their planning of offering targeted credit products to their customers.
+Our fundamental objective is to help the bank to improve its credit card services for the mutual benefit of customers and the business itself. Creating a human-interpretable solutionis emphasizedin each stage of the project
+
+I will try to touch on the most popular methods and algorithms in order to find the best model which will help predict default and to answer the questions:
+
+1. How does the probability of default payment vary by categories of different demographic variables?
+2. Which variables are the strongest predictors of default payment?
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(caret)
+library(caretEnsemble)
+library(psych)
+library(Amelia)
+library(mice)
+library(GGally)
+library(gutenbergr)
+library(tidytext)
+library(dplyr)
+library(janeaustenr)
+library(stringi)
+library(tidyr)
+library(rpart)
+library(randomForest)
+```
+
+#Data Overview
+This dataset contains information on default payments, demographic factors, credit data, history of payment, and bill statements of credit card clients in Taiwan from April 2005 to September 2005
+```{r}
+library(readxl)
+#Importing Data set
+setwd("C:/Users/SuprasannaPradhan/Documents/My Files/Great Lakes Projects/Capstone Project TCD")
+taiwan_data=read_excel("Taiwan-Customer defaults.xls", skip=1)
+str(taiwan_data)
+
+
+```
+We got here total 30000 observations with 25 variables ,if observed that the data set has been clasffied in 4 categories 
+Colomun X1 to X5 is general data where Limit balance and age are continous frequnaices and othe variable are bonimcal categories .
+Vatiable X6 to X11 ispayment history from April to September2005 which is consistes of categorical variables 
+Varibale  X12 to X17 is bill statement amount ,all are carrying amount values
+X18 to X23 is carried out the previous amount paid by the customer shonw in frequence
+
+Default will be the indepande varibale whihc we shoud be used for predcit our probalities 
+
+Further we are classifed the data into four groups 
+
+#Exploratory Data Analysis
+General data ,History of past payment-(from April to September, 2005) Bill statement and Amount of previous payment (NT dollar)
+
+```{r}
+#Changing varibale names
+taiwan_bank <-as.data.frame(taiwan_data)
+colnames(taiwan_bank)[colnames(taiwan_bank)=="PAY_0"] <- "REPAY_SEP"
+colnames(taiwan_bank)[colnames(taiwan_bank)=="PAY_2"] <- "REPAY_AUG"
+colnames(taiwan_bank)[colnames(taiwan_bank)=="PAY_3"] <- "REPAY_8M"
+colnames(taiwan_bank)[colnames(taiwan_bank)=="PAY_4"] <- "REPAY_9M"
+colnames(taiwan_bank)[colnames(taiwan_bank)=="PAY_5"] <- "REPAY_10M"
+colnames(taiwan_bank)[colnames(taiwan_bank)=="PAY_6"] <- "REPAY_APR"
+colnames(taiwan_bank)[colnames(taiwan_bank)=="BILL_AMT1"] <- "BILL_AMT_SEP"
+colnames(taiwan_bank)[colnames(taiwan_bank)=="BILL_AMT2"] <- "BILL_AMT_AUG"
+colnames(taiwan_bank)[colnames(taiwan_bank)=="BILL_AMT3"] <- "BILL_AMT_JUL"
+colnames(taiwan_bank)[colnames(taiwan_bank)=="BILL_AMT4"] <- "BILL_AMT_JUN"
+colnames(taiwan_bank)[colnames(taiwan_bank)=="BILL_AMT5"] <- "BILL_AMT_MAY"
+colnames(taiwan_bank)[colnames(taiwan_bank)=="BILL_AMT6"] <- "BILL_AMT_APR"
+colnames(taiwan_bank)[colnames(taiwan_bank)=="PAY_AMT1"] <- "PAID_AMT_SEP"
+colnames(taiwan_bank)[colnames(taiwan_bank)=="PAY_AMT2"] <- "PAID_AMT_AUG"
+colnames(taiwan_bank)[colnames(taiwan_bank)=="PAY_AMT3"] <- "PAID_AMT_JUL"
+colnames(taiwan_bank)[colnames(taiwan_bank)=="PAY_AMT4"] <- "PAID_AMT_JUN"
+colnames(taiwan_bank)[colnames(taiwan_bank)=="PAY_AMT5"] <- "PAID_AMT_MAY"
+colnames(taiwan_bank)[colnames(taiwan_bank)=="PAY_AMT6"] <- "PAID_AMT_APR"
+colnames(taiwan_bank)[colnames(taiwan_bank)=="default payment next month"] <- "DEFAULT"
+```
+
+Above we have renamed all variables 
+
+```{r}
+summary(taiwan_bank)
+```
+
+```{r}
+##Checking Data ##
+names(taiwan_bank)
+#visualize the missing data
+missmap(taiwan_bank)
+sum(is.na(taiwan_bank))
+taiwan_bank[is.na(taiwan_bank)] <- 0
+sum(is.na(taiwan_bank))
+
+```
+There is not missing data , hecne we proceed further convert the varibales like ID,SEX,EDUCATION,MARRIAGE
+
+Here we have converted some variables level into categorical data as we need them for visualization purpose.
+The variblaes like SEX, MARRAIGE, EDUCATOlevels are converted ,
+```{r}
+# Renaming levels of variables
+library(plyr)
+taiwan_bank$ID <- as.factor(taiwan_bank$ID )
+taiwan_bank$SEX <- as.factor(taiwan_bank$SEX )
+taiwan_bank$EDUCATION  <- as.factor(taiwan_bank$EDUCATION)
+taiwan_bank$MARRIAGE <- as.factor(taiwan_bank$MARRIAGE )
+taiwan_bank$DEFAULT <- as.factor(taiwan_bank$DEFAULT )
+levels(taiwan_bank$DEFAULT) <- c("No","Yes")
+levels(taiwan_bank$SEX)[levels(taiwan_bank$SEX) == "1"] <- "Male"
+levels(taiwan_bank$SEX)[levels(taiwan_bank$SEX) == "2"] <- "Female"
+levels(taiwan_bank$EDUCATION)[levels(taiwan_bank$EDUCATION) == "1"] <- "Graduated"
+levels(taiwan_bank$EDUCATION)[levels(taiwan_bank$EDUCATION) == "2"] <- "University"
+levels(taiwan_bank$EDUCATION)[levels(taiwan_bank$EDUCATION) == "3"] <- "High.School"
+levels(taiwan_bank$EDUCATION)[levels(taiwan_bank$EDUCATION) =="4"] <- "Others"
+levels(taiwan_bank$EDUCATION)[levels(taiwan_bank$EDUCATION) =="5"] <- "Unlisted"
+levels(taiwan_bank$EDUCATION)[levels(taiwan_bank$EDUCATION) =="6"] <- "Unlisted_one"
+taiwan_bank$MARRIAGE<-ifelse(taiwan_bank$MARRIAGE=="1","Married","Unmarried")
+str(taiwan_bank)
+```
+
+#Precentage of defaulter
+```{r}
+
+# percentage of defaulters
+library(psych)
+#describe(taiwan_data)[, c(1:5, 8:9)]
+tab1 <- round(prop.table(table(taiwan_bank$DEFAULT))*100,2)
+# bar-plot
+bp <- barplot(tab1,
+        xlab = "DEFAULT (Yes/No)", ylab = "Percent (%)",
+        main = "Percentage of Defaulters",
+        col = c("blue","red"), 
+        legend = rownames(tab1), 
+        beside = TRUE,
+        ylim = c(0, 90))
+text(bp, 0, round(tab1, 1),cex=1,pos=3)
+
+```
+We got 22.1 % percent defaulter and 77.9% are postive cases .
+
+```{r}
+# Percentage of defaulters by Gender
+tab2 <- round(prop.table(table(taiwan_bank$DEFAULT,taiwan_bank$SEX))*100,2)
+# bar-plot
+bp <- barplot(tab2, beside = TRUE, main = "Bar Chart For Defaulters By Gender", 
+col = c("blue", "pink"),
+xlab = "SEX",
+ylab = "Percent (%)", legend = c("No", "Yes"), 
+args.legend = list(title = "Default", x = "topright", cex = .7), ylim = c(0, 90))
+text(bp, 0, round(tab2, 1),cex=1,pos=3) 
+
+```
+```{r}
+# percentage of defaulters by Education
+tab3 <- round(prop.table(table(taiwan_bank$DEFAULT,taiwan_bank$EDUCATION))*100,2)
+
+bp <- barplot(tab3, beside = TRUE, main = "Bar Chart For Defaulters By Education", 
+col = c("blue", "red"),
+xlab = "EDUCATION",
+ylab = "Percent (%)", legend = c("No", "Yes"), 
+args.legend = list(title = "Default", x = "topright", cex = .7), ylim = c(0, 90))
+text(bp, 0, round(tab3, 1),cex=1,pos=3) 
+```
+
+```{r}
+# Percentage of defaulters by MaritalStatus
+
+tab4 <- round(prop.table(table(taiwan_bank$DEFAULT,taiwan_bank$MARRIAGE))*100,2)
+
+bp <- barplot(tab4, beside = TRUE, main = "Bar Chart For Defaulters By Marital Status", 
+col = c("blue", "red"),
+xlab = "MARRIAGE",
+ylab = "Percent (%)", legend = c("No", "Yes"), 
+args.legend = list(title = "Default", x = "topright", cex = .7), ylim = c(0, 90))
+text(bp, 0, round(tab4, 1),cex=1,pos=3) 
+```
+
+
+```{r}
+library(ggplot2)
+library(dplyr)
+ggplot(taiwan_bank, aes(x= AGE, colour = DEFAULT )) +
+  geom_freqpoly(binwidth = 1)+ labs(title="Age Distribution by Defaulter ")
+```
+
+
+
+
+
+```{r}
+#visual 2
+lb <- ggplot(taiwan_bank, aes(x=LIMIT_BAL , fill=DEFAULT, color=DEFAULT)) +
+  geom_histogram(binwidth = 100000) + labs(title="Credit Limit by Defaulter")
+lb + theme_bw()
+
+```
+
+
+```{r}
+#visual 6
+pa <- ggplot(taiwan_bank, aes(x=PAID_AMT_SEP, fill=DEFAULT, color=DEFAULT)) +
+  geom_histogram(binwidth = 100000) + labs(title="Paid in Setemper by Defaulter")
+pa + theme_bw()
+
+```
+```{r}
+
+# plotting box plots
+pd <- ggplot(taiwan_bank, aes(x = DEFAULT, y = PAID_AMT_SEP)) +  
+  ylab("Paid in Setemper (NT$)") + geom_boxplot()
+pd + labs(title="Paid in Setemper by Defaulter ")
+
+```
+
+
+
+
+
+
+```{r}
+
+bas <- ggplot(taiwan_bank, aes(x=BILL_AMT_SEP, fill= DEFAULT, color=DEFAULT)) +
+  geom_histogram(binwidth = 100000) + labs(title="Bill Outstanding September by Defaulter")
+bas + theme_bw()
+
+```
+
+```{r}
+# plotting box plots
+ba <- ggplot((taiwan_bank), aes(x = DEFAULT, y = BILL_AMT_SEP)) + ylab("Bill Outstanding September  (NT$)") + geom_boxplot()
+ba + labs(title=" Bill Outstanding in Septmber defaulters")
+```
+
+
+```{r}
+boxplot(taiwan_bank[,13:18],  
+main="Find outlayer in paid amount",
+xlab="Variable ",
+ylab="Degree of freq",
+col="blue",
+border="red" )
+```
+
+Data provided in these colmuon are categoricalvariables with the levels: -1=pay duly, 1=payment delay for one month, 2=payment delay for two months, . 8=payment delay for eight months, 9=payment delay for nine months and above 
+
+```{r}
+
+boxplot(taiwan_bank[,19:24],
+main="Find outlayer in paid amount ",
+xlab="Variable ",
+ylab="Degree of freq",
+col="red",
+border="steelblue" )
+```
+
+
+
+```{r}
+# loading the package
+
+library(ggplot2)
+# plotting scatter plot using ggplot2
+sept <- ggplot(taiwan_bank, aes(x = BILL_AMT_SEP, y = LIMIT_BAL)) + 
+  ylab("Credit Limit (NT$)") + geom_point() 
+sept + labs(x = "Bill Outstanding Sept  (NT$)") + 
+  labs(title="Scatter Plot Between CreditLimit And BillOutstanding")
+
+
+```
+
+
+```{r}
+# loading the package
+library(ggplot2)
+# plotting scatter plot
+sepl <- ggplot(taiwan_bank, aes(x = BILL_AMT_SEP, y = LIMIT_BAL,linetype = DEFAULT)) + ylab("Credit Limit (NT$)") + geom_point() + scale_linetype_manual(values=c("dashed", "solid")) +
+  geom_smooth(method=lm, se=FALSE, color= "red")
+sepl + labs(x = "BillOutstanding (NT$)") + 
+labs(title="Scatter Plot Between CreditLimit And BillOutstanding By Defaulters")
+```
+
+```{r}
+library(ggplot2)
+# plotting scatter plot 
+sepp <- ggplot(taiwan_bank, aes(x = PAID_AMT_SEP, y =LIMIT_BAL)) +  
+  ylab("Credit Limit (NT$)") + geom_point() 
+sepp + labs(x = "Last Payment (NT$)") + 
+  labs(title="Scatter plot between CreditLimit And LastPayment")
+```
+```{r}
+sepd <- ggplot(taiwan_bank, aes(x =PAID_AMT_SEP , y = LIMIT_BAL,linetype = DEFAULT))+
+   ylab("Credit Limit (NT$)") + geom_point() + scale_linetype_manual(values=c("dashed", "solid")) +
+  geom_smooth(method=lm, se=FALSE, color= "red")
+sepd + labs(x = "LastPayment (NT$)") + 
+  labs(title="Scatter Plot Between CreditLimit And LastPayment By Defaulters")
+```
+
+```{r}
+p <- ggplot(taiwan_bank, aes(x = AGE
+, y = PAID_AMT_SEP)) +  
+  ylab("Credit Limit (NT$)") + geom_point() 
+p + labs(x = "Age (Years)") +
+labs(title="Scatter plot between Paid in Septmber And Age")
+```
+
+
+```{r}
+p <- ggplot(taiwan_bank, aes(x = AGE, y = PAID_AMT_SEP,linetype = DEFAULT)) + ylab("Paid Amount in September  (NT$)") + geom_point() +
+     scale_linetype_manual(values=c("dashed", "solid")) +
+     geom_smooth(method=lm, se=FALSE, color= "red")
+  p + labs(x = "Age (Years)") + 
+  labs(title="Scatter Plot Between Amount Paid in September And Age By Defaulters")
+```
+```{r}
+pairs(~ LIMIT_BAL + BILL_AMT_SEP + BILL_AMT_AUG +BILL_AMT_JUL+BILL_AMT_JUN +BILL_AMT_MAY+BILL_AMT_APR + AGE ,data = taiwan_bank, 
+   main="Simple Scatterplot Matrix")
+```
+
+
+```{r}
+#visual 5
+taiwan_bank <- taiwan_bank  %>% select (-ID,SEX,EDUCATION,MARRIAGE,DEFAULT,REPAY_SEP,REPAY_AUG,REPAY_8M,REPAY_9M,REPAY_10M,REPAY_APR)
+ggpairs(taiwan_bank)
+```
+
+
